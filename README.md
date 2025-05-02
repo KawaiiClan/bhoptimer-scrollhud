@@ -5,8 +5,9 @@
 Improved version of [lilac1337](https://github.com/lilac1337)'s [scrollhud](https://github.com/lilac1337/sourcemod-plugins/blob/main/scrollhud.sp) plugin
 
 ## Added:
- - enabled cookie, to save user preference
+ - enabled/disabled cookie
  - spectator support
+ - only displays while bhopping
  - better functionality
  - better formatting
  - cleaner code
