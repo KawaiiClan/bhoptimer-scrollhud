@@ -38,7 +38,7 @@ char g_sSounds[][] =
 
 char g_sFiles[][] =
 {
-	"kawaii/perf.wav",
+	"kawaii/perf_drip.wav",
 	"kawaii/perf_blub.wav",
 	"kawaii/perf_ding.wav",
 	"kawaii/perf_click.wav",
