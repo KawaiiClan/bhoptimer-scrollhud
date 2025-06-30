@@ -15,6 +15,7 @@ enum struct stats_t
 	bool bBhopping;
 	bool bScrollHudEnabled;
 	bool bPerfSoundEnabled;
+	bool bPlayedPerfSound;
 	int iPerfSoundChoice;
 	int iEarlyTicks;
 	int iLateTicks;
@@ -144,11 +145,13 @@ void PerfMenu(int client)
 	hPanel.SetTitle("Perfect Jump Sound");
 
 	char sDisplay[32];
-	FormatEx(sDisplay, sizeof(sDisplay), "[%s] Enabled", g_Stats[client].bPerfSoundEnabled ? "X" : "  ");
+	FormatEx(sDisplay, sizeof(sDisplay), "[%s] Enabled\n ", g_Stats[client].bPerfSoundEnabled ? "X" : "  ");
 	hPanel.DrawItem(sDisplay, ITEMDRAW_CONTROL);
 
 	for(int i = 0; i < sizeof(g_sSounds); i++)
 		hPanel.DrawItem(g_sSounds[i], g_Stats[client].iPerfSoundChoice == i ? ITEMDRAW_DISABLED : ITEMDRAW_CONTROL);
+
+	hPanel.DrawItem("", ITEMDRAW_SPACER);
 
 	SetPanelCurrentKey(hPanel, 10);
 	hPanel.DrawItem("Exit", ITEMDRAW_CONTROL);
@@ -320,8 +323,11 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 								SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 100, 255, 255, 0, 0.0, 0.0);
 								ShowHudText(i, 5, "Perf (%i)\n%s", g_Stats[client].iPerfed, sSecondLine);
 							}
-							if(g_Stats[i].bPerfSoundEnabled)
-								EmitSoundToClient(i, g_sSounds[g_Stats[i].iPerfSoundChoice], _, _, 150);
+							if(g_Stats[i].bPerfSoundEnabled && !g_Stats[client].bPlayedPerfSound)
+							{
+								EmitSoundToClient(i, g_sFiles[g_Stats[i].iPerfSoundChoice], _, _, 150);
+								g_Stats[client].bPlayedPerfSound = true;
+							}
 						}
 					}
 				}
@@ -364,5 +370,6 @@ public Action Event_PlayerJump(Event event, const char[] name, bool dontBroadcas
 		}
 	}
 	g_Stats[client].iGroundTicks = 0;
+	g_Stats[client].bPlayedPerfSound = false;
 	return Plugin_Continue;
 }
