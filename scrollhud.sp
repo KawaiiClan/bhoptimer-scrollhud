@@ -14,6 +14,8 @@ enum struct stats_t
 	bool bEarlyTicksResettable;
 	bool bBhopping;
 	bool bScrollHudEnabled;
+	bool bPerfSoundEnabled;
+	int iPerfSoundChoice;
 	int iEarlyTicks;
 	int iLateTicks;
 	int iPerfed;
@@ -24,16 +26,36 @@ enum struct stats_t
 	float fLastY;
 }
 
+char g_sSounds[][] =
+{
+	"Drip",
+	"Blub",
+	"Ding",
+	"Click",
+	"Alarm"
+};
+
+char g_sFiles[][] =
+{
+	"kawaii/perf.wav",
+	"kawaii/perf_blub.wav",
+	"kawaii/perf_ding.wav",
+	"kawaii/perf_click.wav",
+	"kawaii/perf_alarm.wav"
+};
+
 chatstrings_t g_sChatStrings;
 stats_t g_Stats[MAXPLAYERS+1];
 
 Handle g_hScrollHudEnabled = INVALID_HANDLE;
+Handle g_hPerfSoundEnabled= INVALID_HANDLE;
+Handle g_hPerfSoundChoice = INVALID_HANDLE;
 
 public Plugin myinfo =
 {
 	name        = "Kawaii-Scroll HUD",
 	author      = "may, olivia",
-	description = "Show scroll stats on HUD",
+	description = "Show scroll stats on HUD, now with perf sounds",
 	version     = "c:",
 	url         = "https://KawaiiClan.com"
 };
@@ -41,9 +63,24 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	RegConsoleCmd("sm_scrollhud", Command_ScrollHud, "Enable scroll stats hud");
+	RegConsoleCmd("sm_perf", Command_Perf);
+	RegConsoleCmd("sm_perfsound", Command_Perf);
 	HookEvent("player_jump", Event_PlayerJump, EventHookMode_Post);
 	g_hScrollHudEnabled = RegClientCookie("scrollhud_enabled", "Scroll Hud Enabled", CookieAccess_Protected);
+	g_hPerfSoundEnabled = RegClientCookie("shavit_perf", "Perfect jump enabled.", CookieAccess_Protected);
+	g_hPerfSoundChoice = RegClientCookie("shavit_perfsound", "Perfect jump sound.", CookieAccess_Protected);
 	Shavit_OnChatConfigLoaded();
+}
+
+public void OnMapStart()
+{
+	char buf[PLATFORM_MAX_PATH];
+	for(int i = 0; i < sizeof(g_sFiles); i++)
+	{
+		FormatEx(buf, sizeof(buf), "sound/%s", g_sFiles[i]);
+		PrecacheSound(g_sFiles[i], true);
+		AddFileToDownloadsTable(buf);
+	}
 }
 
 public void OnClientPutInServer(int client)
@@ -68,6 +105,12 @@ public void OnClientCookiesCached(int client)
 	char sCookie[2];
 	GetClientCookie(client, g_hScrollHudEnabled, sCookie, sizeof(sCookie));
 	g_Stats[client].bScrollHudEnabled = strlen(sCookie) > 0 ? view_as<bool>(StringToInt(sCookie)) : false;
+
+	GetClientCookie(client, g_hPerfSoundEnabled, sCookie, sizeof(sCookie));
+	g_Stats[client].bPerfSoundEnabled = strlen(sCookie) > 0 ? view_as<bool>(StringToInt(sCookie)) : false;
+
+	GetClientCookie(client, g_hPerfSoundChoice, sCookie, sizeof(sCookie));
+	g_Stats[client].iPerfSoundChoice = strlen(sCookie) > 0 ? StringToInt(sCookie) : 0;
 }
 
 public Action Command_ScrollHud(int client, int args)
@@ -77,11 +120,84 @@ public Action Command_ScrollHud(int client, int args)
 		g_Stats[client].bScrollHudEnabled = !g_Stats[client].bScrollHudEnabled;
 		Shavit_PrintToChat(client, "Scroll HUD has been %s%s", g_sChatStrings.sVariable, g_Stats[client].bScrollHudEnabled?"enabled":"disabled");
 
-		char sValue[4];
+		char sValue[2];
 		IntToString(g_Stats[client].bScrollHudEnabled, sValue, sizeof(sValue));
 		SetClientCookie(client, g_hScrollHudEnabled, sValue);
 	}
 
+	return Plugin_Handled;
+}
+
+public Action Command_Perf(int client, int args)
+{
+	if(IsValidClient(client))
+		PerfMenu(client);
+	return Plugin_Handled;
+}
+
+void PerfMenu(int client)
+{
+	if(!IsValidClient(client))
+		return;
+
+	Panel hPanel = CreatePanel();
+	hPanel.SetTitle("Perfect Jump Sound");
+
+	char sDisplay[32];
+	FormatEx(sDisplay, sizeof(sDisplay), "[%s] Enabled", g_Stats[client].bPerfSoundEnabled ? "X" : "  ");
+	hPanel.DrawItem(sDisplay, ITEMDRAW_CONTROL);
+
+	for(int i = 0; i < sizeof(g_sSounds); i++)
+		hPanel.DrawItem(g_sSounds[i], g_Stats[client].iPerfSoundChoice == i ? ITEMDRAW_DISABLED : ITEMDRAW_CONTROL);
+
+	SetPanelCurrentKey(hPanel, 10);
+	hPanel.DrawItem("Exit", ITEMDRAW_CONTROL);
+
+	hPanel.Send(client, PerfMenuHandler, MENU_TIME_FOREVER);
+	CloseHandle(hPanel);
+}
+
+public int PerfMenuHandler(Menu hPanel, MenuAction action, int param1, any param2)
+{
+	switch(action)
+	{
+		case MenuAction_Select:
+		{
+			if(IsValidClient(param1))
+			{
+				if(param2 == 1)
+				{
+					EmitSoundToClient(param1, "buttons/button14.wav");
+					g_Stats[param1].bPerfSoundEnabled = !g_Stats[param1].bPerfSoundEnabled;
+					SetClientCookie(param1, g_hPerfSoundEnabled, g_Stats[param1].bPerfSoundEnabled?"1":"0");
+					PerfMenu(param1);
+					return Plugin_Handled;
+				}
+				else if(param2 == 10)
+				{
+					EmitSoundToClient(param1, "buttons/combine_button7.wav");
+					CloseHandle(hPanel);
+					return Plugin_Handled;
+				}
+
+				EmitSoundToClient(param1, g_sFiles[param2-2], _, _, 150);
+				g_Stats[param1].iPerfSoundChoice = param2-2;
+
+				char s[2];
+				IntToString(param2-2, s, sizeof(s));
+				SetClientCookie(param1, g_hPerfSoundChoice, s);
+				PerfMenu(param1);
+			}
+		}
+		case MenuAction_Cancel:
+		{
+			if(IsValidClient(param1))
+			{
+				EmitSoundToClient(param1, "buttons/combine_button7.wav");
+				CloseHandle(hPanel);
+			}
+		}
+	}
 	return Plugin_Handled;
 }
 
@@ -176,7 +292,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 			{
 				if(IsClientInGame(i) && !IsClientSourceTV(i) && !IsClientReplay(i) && !IsFakeClient(i))
 				{
-					if(!g_Stats[i].bScrollHudEnabled)
+					if(!g_Stats[i].bScrollHudEnabled && !g_Stats[i].bPerfSoundEnabled)
 						continue;
 
 					int target = GetSpectatorTarget(i, i);
@@ -191,13 +307,21 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 					{
 						if(g_Stats[client].iMissed)
 						{
-							SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 50, 50, 255, 0, 0.0, 0.0);
-							ShowHudText(i, 5, "Miss (%i)\n%s", g_Stats[client].iMissed, sSecondLine);
+							if(g_Stats[i].bScrollHudEnabled)
+							{
+								SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 50, 50, 255, 0, 0.0, 0.0);
+								ShowHudText(i, 5, "Miss (%i)\n%s", g_Stats[client].iMissed, sSecondLine);
+							}
 						}
 						else if(g_Stats[client].iPerfed)
 						{
-							SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 100, 255, 255, 0, 0.0, 0.0);
-							ShowHudText(i, 5, "Perf (%i)\n%s", g_Stats[client].iPerfed, sSecondLine);
+							if(g_Stats[i].bScrollHudEnabled)
+							{
+								SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 100, 255, 255, 0, 0.0, 0.0);
+								ShowHudText(i, 5, "Perf (%i)\n%s", g_Stats[client].iPerfed, sSecondLine);
+							}
+							if(g_Stats[i].bPerfSoundEnabled)
+								EmitSoundToClient(i, g_sSounds[g_Stats[i].iPerfSoundChoice], _, _, 150);
 						}
 					}
 				}
