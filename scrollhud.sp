@@ -24,6 +24,7 @@ enum struct stats_t
 	int iGroundTicks;
 	int iLastCmdNumOrSomething;
 	int iLastLandTick;
+	int iPerfPB;
 	float fLastY;
 }
 
@@ -51,6 +52,7 @@ stats_t g_Stats[MAXPLAYERS+1];
 Handle g_hScrollHudEnabled = INVALID_HANDLE;
 Handle g_hPerfSoundEnabled= INVALID_HANDLE;
 Handle g_hPerfSoundChoice = INVALID_HANDLE;
+Handle g_hPerfPB = INVALID_HANDLE;
 
 public Plugin myinfo =
 {
@@ -64,12 +66,15 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	RegConsoleCmd("sm_scrollhud", Command_ScrollHud, "Enable scroll stats hud");
+	RegConsoleCmd("sm_perfhud", Command_ScrollHud, "Enable scroll stats hud");
 	RegConsoleCmd("sm_perf", Command_Perf);
 	RegConsoleCmd("sm_perfsound", Command_Perf);
+	RegConsoleCmd("sm_perfpb", Command_PerfPB);
 	HookEvent("player_jump", Event_PlayerJump, EventHookMode_Post);
 	g_hScrollHudEnabled = RegClientCookie("scrollhud_enabled", "Scroll Hud Enabled", CookieAccess_Protected);
 	g_hPerfSoundEnabled = RegClientCookie("shavit_perf", "Perfect jump enabled.", CookieAccess_Protected);
 	g_hPerfSoundChoice = RegClientCookie("shavit_perfsound", "Perfect jump sound.", CookieAccess_Protected);
+	g_hPerfPB = RegClientCookie("shavit_perfpb", "Perfect jump string PB.", CookieAccess_Protected);
 	Shavit_OnChatConfigLoaded();
 }
 
@@ -112,6 +117,9 @@ public void OnClientCookiesCached(int client)
 
 	GetClientCookie(client, g_hPerfSoundChoice, sCookie, sizeof(sCookie));
 	g_Stats[client].iPerfSoundChoice = strlen(sCookie) > 0 ? StringToInt(sCookie) : 0;
+
+	GetClientCookie(client, g_hPerfPB, sCookie, sizeof(sCookie));
+	g_Stats[client].iPerfPB = strlen(sCookie) > 0 ? StringToInt(sCookie) : 0;
 }
 
 public Action Command_ScrollHud(int client, int args)
@@ -136,6 +144,13 @@ public Action Command_Perf(int client, int args)
 	return Plugin_Handled;
 }
 
+public Action Command_PerfPB(int client, int args)
+{
+	if(IsValidClient(client))
+		Shavit_PrintToChat(client, "Most perfs achieved in a row: %s%i", g_sChatStrings.sVariable, g_Stats[client].iPerfPB);
+	return Plugin_Handled;
+}
+
 void PerfMenu(int client)
 {
 	if(!IsValidClient(client))
@@ -152,6 +167,9 @@ void PerfMenu(int client)
 		hPanel.DrawItem(g_sSounds[i], g_Stats[client].iPerfSoundChoice == i ? ITEMDRAW_DISABLED : ITEMDRAW_CONTROL);
 
 	hPanel.DrawItem("", ITEMDRAW_SPACER);
+
+	FormatEx(sDisplay, sizeof(sDisplay), "Consecutive Perfs PB: %i\n ", g_Stats[client].iPerfPB);
+	hPanel.DrawItem(sDisplay, ITEMDRAW_RAWLINE);
 
 	SetPanelCurrentKey(hPanel, 10);
 	hPanel.DrawItem("Exit", ITEMDRAW_CONTROL);
@@ -323,10 +341,10 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 								SetHudTextParams(-1.0, -0.35, GetTickInterval() * 5, 255, 100, 255, 255, 0, 0.0, 0.0);
 								ShowHudText(i, 5, "Perf (%i)\n%s", g_Stats[client].iPerfed, sSecondLine);
 							}
-							if(g_Stats[i].bPerfSoundEnabled && !g_Stats[client].bPlayedPerfSound)
+							if(g_Stats[i].bPerfSoundEnabled && !g_Stats[i].bPlayedPerfSound)
 							{
 								EmitSoundToClient(i, g_sFiles[g_Stats[i].iPerfSoundChoice], _, _, 150);
-								g_Stats[client].bPlayedPerfSound = true;
+								g_Stats[i].bPlayedPerfSound = true;
 							}
 						}
 					}
@@ -346,6 +364,11 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 	return Plugin_Continue;
 }
 
+public void ResetPlayedPerfSound(int client)
+{
+	g_Stats[client].bPlayedPerfSound = false;
+}
+
 public Action Event_PlayerJump(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
@@ -362,6 +385,13 @@ public Action Event_PlayerJump(Event event, const char[] name, bool dontBroadcas
 		{
 			g_Stats[client].iMissed = 0;
 			g_Stats[client].iPerfed++;
+			if(g_Stats[client].iPerfed > g_Stats[client].iPerfPB)
+			{
+				g_Stats[client].iPerfPB = g_Stats[client].iPerfed;
+				char sValue[8];
+				IntToString(g_Stats[client].iPerfPB, sValue, sizeof(sValue));
+				SetClientCookie(client, g_hPerfPB, sValue);
+			}
 		}
 		else
 		{
@@ -371,5 +401,15 @@ public Action Event_PlayerJump(Event event, const char[] name, bool dontBroadcas
 	}
 	g_Stats[client].iGroundTicks = 0;
 	g_Stats[client].bPlayedPerfSound = false;
+	for(int i = 1; i <= MaxClients; i++)
+	{
+		if(IsClientInGame(i) && !IsClientSourceTV(i) && !IsClientReplay(i) && !IsFakeClient(i))
+		{
+			if(GetSpectatorTarget(i, i) == client)
+			{
+				ResetPlayedPerfSound(i);
+			}
+		}
+	}
 	return Plugin_Continue;
 }
